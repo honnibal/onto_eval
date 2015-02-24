@@ -114,8 +114,8 @@ def evaluate(Language, model_dir, dev_loc, out_loc):
             out_file.write(
                 fmt.format(i=i+1, orth=token.orth_, lemma=token.lemma_,
                            pos=token.tag_,
-                           head=token.head.i+1 if token.head is not token else -1,
-                           label=token.dep_)
+                           head=token.head.i+1 if token.head is not token else 0,
+                           label=token.dep_.lower())
                 )
 
             n_tokens += 1
