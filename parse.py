@@ -65,7 +65,7 @@ def read_gold(loc):
     return sents
  
 
-def evaluate(Language, model_dir, dev_loc, out_loc):
+def parse_and_evaluate(Language, model_dir, dev_loc, out_loc):
     global loss
     nlp = Language(data_dir=model_dir)
     n_corr = 0
@@ -107,8 +107,47 @@ def evaluate(Language, model_dir, dev_loc, out_loc):
     return float(n_corr) / total, float(ln_corr) / total
 
 
-def main(model_dir, dev_loc, out_loc):
-    print >> sys.stderr, evaluate(English, model_dir, dev_loc, out_loc)
+def parse(Language, model_dir, input_loc, out_loc):
+    nlp = Language()
+    out_file = codecs.open(out_loc, 'w', 'utf8')
+    fmt = '{i}\t{orth}\t{lemma}\t{pos}\t{pos}\t_\t{head}\t{label}\t_\n'
+    _ = nlp.parser
+    _ = nlp.tagger    
+    n = 0
+    for sent_str in codecs.open(input_loc, 'r', 'utf8').read().strip().split('\n\n'):
+        words = []
+        tags = []
+        for tok_str in sent_str.split('\n'):
+            pieces = tok_str.split()
+            words.append(pieces[1])
+            tags.append(pieces[3])
+        tokens = nlp.tokenizer.tokens_from_list(words)
+        nlp.tagger.tag_from_strings(tokens, tags)
+        nlp.parser(tokens)
+        for i, token in enumerate(tokens):
+            out_file.write(
+                fmt.format(
+                    i=i+1,
+                    orth=token.orth_,
+                    lemma=token.lemma_,
+                    pos=token.tag_,
+                    head=token.head.i+1 if token.head is not token else 0,
+                    label=token.dep_.lower())
+            )
+        out_file.write('\n')
+        n += len(tokens)
+    out_file.close()
+    print n
+
+
+@plac.annotations(
+    score_parse=("Do evaluation", "flag", "v", bool)
+)
+def main(model_dir, dev_loc, out_loc, score_parse=False):
+    if score_parse:
+        print >> sys.stderr, parse_and_evaluate(English, model_dir, dev_loc, out_loc)
+    else:
+        parse(English, model_dir, dev_loc, out_loc)
     
 
 if __name__ == '__main__':
