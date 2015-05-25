@@ -25,91 +25,66 @@ from spacy.syntax.util import Config
 
 
 def is_punct_label(label):
-    return label == 'P' or label.lower() == 'punct'
+    return label.lower() == 'p' or label.lower() == 'punct'
 
 
-def read_gold(file_):
-    """Read a standard CoNLL/MALT-style format"""
+def _parse_line(line):
+    pieces = line.split()
+    id_ = int(pieces[0]) - 1
+    word = pieces[1]
+    pos = pieces[3]
+    head_idx = int(pieces[6]) - 1
+    label = pieces[7]
+    if label.lower() == 'root':
+        label = 'ROOT'
+
+    if head_idx < 0:
+        head_idx = id_
+    return word, pos, head_idx, label
+
+
+def read_gold(loc):
     sents = []
-    for sent_str in file_.read().strip().split('\n\n'):
+    for sent_str in codecs.open(loc, 'r', 'utf8').read().strip().split('\n\n'):
         ids = []
         words = []
         heads = []
         labels = []
         tags = []
-        for i, line in enumerate(sent_str.split('\n')):
-            id_, word, pos_string, head_idx, label = _parse_line(line)
+        ner = []
+        lines = sent_str.strip().split('\n')
+        for i, line in enumerate(lines):
+            word, pos, head, label = _parse_line(line)
             words.append(word)
-            if head_idx == -1:
-                head_idx = i
-            ids.append(id_)
-            heads.append(head_idx)
+            ids.append(i)
+            heads.append(head)
             labels.append(label)
-            tags.append(pos_string)
-        text = ' '.join(words)
-        sents.append((text, [words], ids, words, tags, heads, labels))
+            tags.append(pos)
+            ner.append('O')
+        sents.append((None, None, (ids, words, tags, heads, labels, ner)))
     return sents
-
-
-def _parse_line(line):
-    pieces = line.split()
-    id_ = int(pieces[0])
-    word = pieces[1]
-    pos = pieces[3]
-    head_idx = int(pieces[6])
-    label = pieces[7]
-    return id_, word, pos, head_idx, label
-
-        
-def iter_data(paragraphs, tokenizer, gold_preproc=False):
-    for raw, tokenized, ids, words, tags, heads, labels in paragraphs:
-        assert len(words) == len(heads)
-        for words in tokenized:
-            sent_ids = ids[:len(words)]
-            sent_tags = tags[:len(words)]
-            sent_heads = heads[:len(words)]
-            sent_labels = labels[:len(words)]
-            sent_heads = _map_indices_to_tokens(sent_ids, sent_heads)
-            tokens = tokenizer.tokens_from_list(words)
-            yield tokens, sent_tags, sent_heads, sent_labels
-            ids = ids[len(words):]
-            tags = tags[len(words):]
-            heads = heads[len(words):]
-            labels = labels[len(words):]
-
-
-def _map_indices_to_tokens(ids, heads):
-    mapped = []
-    for head in heads:
-        if head not in ids:
-            mapped.append(None)
-        else:
-            mapped.append(ids.index(head))
-    return mapped
-
+ 
 
 def evaluate(Language, model_dir, dev_loc, out_loc):
     global loss
     nlp = Language(data_dir=model_dir)
     n_corr = 0
+    ln_corr = 0
     pos_corr = 0
     n_tokens = 0
     total = 0
     skipped = 0
     loss = 0
-    with codecs.open(dev_loc, 'r', 'utf8') as file_:
-        paragraphs = read_gold(file_)
+    sentences = read_gold(dev_loc)
     out_file = codecs.open(out_loc, 'w', 'utf8')
-    for tokens, tag_strs, heads, labels in iter_data(paragraphs, nlp.tokenizer):
-        assert len(tokens) == len(labels)
-        nlp.tagger.tag_from_strings(tokens, tag_strs)
+    for _1, _2, (_3, words, tags, heads, labels, ner) in sentences:
+        tokens = nlp.tokenizer.tokens_from_list(words)
+        assert len(words) == len(tokens) == len(heads)
+        nlp.tagger.tag_from_strings(tokens, tags)
         nlp.parser(tokens)
+ 
         for i, token in enumerate(tokens):
-            try:
-                pos_corr += token.tag_ == tag_strs[i]
-            except:
-                print i, token.orth_, token.tag
-                raise
+            pos_corr += token.tag_ == tags[i]
             fmt = '{i}\t{orth}\t{lemma}\t{pos}\t{pos}\t_\t{head}\t{label}\t_\n'
             out_file.write(
                 fmt.format(i=i+1, orth=token.orth_, lemma=token.lemma_,
@@ -119,19 +94,17 @@ def evaluate(Language, model_dir, dev_loc, out_loc):
                 )
 
             n_tokens += 1
-            if heads[i] is None:
-                skipped += 1
-                continue
             if is_punct_label(labels[i]):
                 continue
             
             n_corr += token.head.i == heads[i]
+            ln_corr += token.head.i == heads[i] and token.dep_.lower() == labels[i].lower()
+            
             total += 1
         out_file.write('\n')
     out_file.close()
-    print >> sys.stderr, loss, skipped, (loss+skipped + total)
     print >> sys.stderr, pos_corr / n_tokens
-    return float(n_corr) / (total + loss)
+    return float(n_corr) / total, float(ln_corr) / total
 
 
 def main(model_dir, dev_loc, out_loc):
