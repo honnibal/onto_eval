@@ -108,7 +108,7 @@ def parse_and_evaluate(Language, model_dir, dev_loc, out_loc):
 
 
 def parse(Language, model_dir, input_loc, out_loc):
-    nlp = Language()
+    nlp = Language(data_dir=model_dir)
     out_file = codecs.open(out_loc, 'w', 'utf8')
     fmt = '{i}\t{orth}\t{lemma}\t{pos}\t{pos}\t_\t{head}\t{label}\t_\n'
     _ = nlp.parser
