@@ -35,7 +35,7 @@ def _parse_line(line):
     if label.lower() == 'root':
         label = 'ROOT'
 
-    if head_idx <= 0:
+    if head_idx < 0:
         head_idx = id_
     return word, pos, head_idx, label
 
@@ -103,6 +103,8 @@ def train(Language, sentences, model_dir, n_iter=15, feat_set=u'basic', seed=0,
         random.shuffle(sentences)
     nlp.parser.model.end_training()
     nlp.tagger.model.end_training()
+    #nlp.vocab.strings.dump(path.join(model_dir, 'vocab', 'strings.txt'))
+
 
 
 def _map_indices_to_tokens(ids, heads):
